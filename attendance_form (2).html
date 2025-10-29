@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Attendance</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 450px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #1565c0;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input.invalid {
+            border-color: #e53e3e;
+        }
+        
+        .required {
+            color: #e53e3e;
+        }
+
+        .error-text {
+            color: #e53e3e;
+            font-size: 12px;
+            margin-top: 4px;
+            display: none;
+        }
+
+        .error-text.show {
+            display: block;
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .message {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .message.show {
+            display: block;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .location-status {
+            margin-top: 20px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📍 Employee Attendance</h1>
+        <p class="subtitle">Mark your attendance by submitting this form</p>
+        
+        <div class="info-box">
+            ℹ️ You can only mark attendance once per day
+        </div>
+        
+        <form id="attendanceForm">
+            <div class="form-group">
+                <label for="name">Name <span class="required">*</span></label>
+                <input type="text" id="name" name="name" required placeholder="Enter your full name">
+                <div class="error-text" id="nameError">Please enter your name</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email <span class="required">*</span></label>
+                <input type="email" id="email" name="email" required placeholder="Enter your email address">
+                <div class="error-text" id="emailError">Please enter a valid email address</div>
+            </div>
+            
+            <button type="submit" id="submitBtn">
+                <span id="btnText">Submit Attendance</span>
+            </button>
+        </form>
+        
+        <div id="message" class="message"></div>
+        <div id="locationStatus" class="location-status" style="display: none;"></div>
+    </div>
+
+    <script>
+        // ========================================
+        // CONFIGURATION - ADD YOUR URL HERE
+        // ========================================
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbysIAHiq7-FQ0FpwrTtsqLcBDSZ5sWdBGVU0cmquQd5TRbzsh9_tcV7qxHloqyCGBaqAg/exec';
+        // ========================================
+
+        // Define the target location (office location)
+        const TARGET_LAT = 11.5852869;
+        const TARGET_LNG = 75.6439678;
+        const MAX_DISTANCE = 100; // meters
+
+        const form = document.getElementById('attendanceForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const message = document.getElementById('message');
+        const locationStatus = document.getElementById('locationStatus');
+        const emailInput = document.getElementById('email');
+        const nameInput = document.getElementById('name');
+        const emailError = document.getElementById('emailError');
+        const nameError = document.getElementById('nameError');
+
+        // Email validation
+        function isValidEmail(email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+        }
+
+        // Real-time email validation
+        emailInput.addEventListener('blur', function() {
+            const email = this.value.trim();
+            if (email && !isValidEmail(email)) {
+                this.classList.add('invalid');
+                emailError.classList.add('show');
+            } else {
+                this.classList.remove('invalid');
+                emailError.classList.remove('show');
+            }
+        });
+
+        emailInput.addEventListener('input', function() {
+            if (this.classList.contains('invalid')) {
+                const email = this.value.trim();
+                if (isValidEmail(email)) {
+                    this.classList.remove('invalid');
+                    emailError.classList.remove('show');
+                }
+            }
+        });
+
+        // Calculate distance between two coordinates using Haversine formula
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth's radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c; // Distance in meters
+        }
+
+        function showMessage(text, type) {
+            message.textContent = text;
+            message.className = 'message show ' + type;
+        }
+
+        function showLocationStatus(text) {
+            locationStatus.textContent = text;
+            locationStatus.style.display = 'block';
+        }
+
+        function getTodayKey() {
+            const today = new Date();
+            return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        }
+
+        // Check if email already marked attendance today
+        async function hasMarkedToday(email) {
+            try {
+                const todayKey = getTodayKey();
+                const storageKey = `attendance_${todayKey}_${email.toLowerCase()}`;
+                const result = await window.storage.get(storageKey);
+                return result !== null;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        // Mark email as attended today
+        async function markAttended(email) {
+            try {
+                const todayKey = getTodayKey();
+                const storageKey = `attendance_${todayKey}_${email.toLowerCase()}`;
+                await window.storage.set(storageKey, 'marked');
+            } catch (error) {
+                console.error('Error marking attendance:', error);
+            }
+        }
+
+        // Send data to Google Sheets
+        async function sendToGoogleSheets(data) {
+            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+                console.warn('Google Script URL not configured');
+                return true;
+            }
+
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                return true;
+            } catch (error) {
+                console.error('Error sending to Google Sheets:', error);
+                return true;
+            }
+        }
+
+        // Form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const name = nameInput.value.trim();
+            const email = emailInput.value.trim();
+
+            // Validate fields
+            let hasError = false;
+
+            if (!name) {
+                nameInput.classList.add('invalid');
+                nameError.classList.add('show');
+                hasError = true;
+            } else {
+                nameInput.classList.remove('invalid');
+                nameError.classList.remove('show');
+            }
+
+            if (!email) {
+                emailInput.classList.add('invalid');
+                emailError.textContent = 'Please enter your email address';
+                emailError.classList.add('show');
+                hasError = true;
+            } else if (!isValidEmail(email)) {
+                emailInput.classList.add('invalid');
+                emailError.textContent = 'Please enter a valid email address';
+                emailError.classList.add('show');
+                hasError = true;
+            } else {
+                emailInput.classList.remove('invalid');
+                emailError.classList.remove('show');
+            }
+
+            if (hasError) {
+                return;
+            }
+
+            // Check if already marked attendance today
+            const alreadyMarked = await hasMarkedToday(email);
+            if (alreadyMarked) {
+                showMessage('⚠️ You have already marked attendance today!', 'warning');
+                return;
+            }
+
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            btnText.innerHTML = '<span class="spinner"></span> Checking location...';
+            message.className = 'message';
+            locationStatus.style.display = 'none';
+
+            // Check if geolocation is supported
+            if (!navigator.geolocation) {
+                showMessage('Geolocation is not supported by your browser.', 'error');
+                submitBtn.disabled = false;
+                btnText.textContent = 'Submit Attendance';
+                return;
+            }
+
+            // Get user's current location
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+
+                    // Calculate distance
+                    const distance = calculateDistance(TARGET_LAT, TARGET_LNG, userLat, userLng);
+
+                    showLocationStatus(`📍 Your location accuracy: ±${Math.round(accuracy)}m | Distance from office: ${Math.round(distance)}m`);
+
+                    if (distance <= MAX_DISTANCE) {
+                        // Prepare data
+                        const now = new Date();
+                        const data = {
+                            name: name,
+                            email: email,
+                            date: now.toLocaleDateString('en-IN'),
+                            time: now.toLocaleTimeString('en-IN'),
+                            timestamp: now.toISOString(),
+                            latitude: userLat,
+                            longitude: userLng,
+                            distance: Math.round(distance),
+                            accuracy: Math.round(accuracy)
+                        };
+
+                        // Send to Google Sheets
+                        await sendToGoogleSheets(data);
+
+                        // Mark as attended
+                        await markAttended(email);
+
+                        showMessage(`✅ Attendance marked successfully! Welcome, ${name}!`, 'success');
+                        
+                        // Reset form after successful submission
+                        setTimeout(() => {
+                            form.reset();
+                            message.className = 'message';
+                            locationStatus.style.display = 'none';
+                        }, 5000);
+                    } else {
+                        // Error - too far
+                        showMessage(`❌ You are ${Math.round(distance)}m away from the office location. You must be within ${MAX_DISTANCE}m to mark attendance.`, 'error');
+                    }
+
+                    submitBtn.disabled = false;
+                    btnText.textContent = 'Submit Attendance';
+                },
+                (error) => {
+                    let errorMsg = 'Unable to retrieve your location. ';
+                    
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMsg += 'Please enable location permissions for this page.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMsg += 'Location information is unavailable.';
+                            break;
+                        case error.TIMEOUT:
+                            errorMsg += 'Location request timed out.';
+                            break;
+                        default:
+                            errorMsg += 'An unknown error occurred.';
+                    }
+
+                    showMessage(errorMsg, 'error');
+                    submitBtn.disabled = false;
+                    btnText.textContent = 'Submit Attendance';
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        });
+    </script>
+</body>
+</html>
