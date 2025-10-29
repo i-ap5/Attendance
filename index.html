@@ -176,11 +176,11 @@
 </head>
 <body>
     <div class="container">
-        <h1>📍 Employee Attendance</h1>
+        <h1> DCIP Attendance</h1>
         <p class="subtitle">Mark your attendance by submitting this form</p>
         
         <div class="info-box">
-            ℹ️ You can only mark attendance once per day
+            ℹ️ You can only mark attendance once per day.
         </div>
         
         <form id="attendanceForm">
@@ -216,6 +216,7 @@
         const TARGET_LAT = 11.5852869;
         const TARGET_LNG = 75.6439678;
         const MAX_DISTANCE = 100; // meters
+        const COOLDOWN_TIME = 2 * 60 * 1000; // 2 minutes in milliseconds
 
         const form = document.getElementById('attendanceForm');
         const submitBtn = document.getElementById('submitBtn');
@@ -226,6 +227,42 @@
         const nameInput = document.getElementById('name');
         const emailError = document.getElementById('emailError');
         const nameError = document.getElementById('nameError');
+
+        // Generate device fingerprint
+        function generateDeviceFingerprint() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillText('fingerprint', 2, 2);
+            const canvasData = canvas.toDataURL();
+            
+            const fingerprint = {
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                platform: navigator.platform,
+                screenResolution: `${screen.width}x${screen.height}`,
+                colorDepth: screen.colorDepth,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                canvasFingerprint: canvasData.substring(0, 50),
+                hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+                deviceMemory: navigator.deviceMemory || 'unknown'
+            };
+            
+            // Create a hash-like string from fingerprint
+            const fingerprintString = JSON.stringify(fingerprint);
+            let hash = 0;
+            for (let i = 0; i < fingerprintString.length; i++) {
+                const char = fingerprintString.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            
+            return {
+                deviceId: Math.abs(hash).toString(16),
+                deviceInfo: fingerprint
+            };
+        }
 
         // Email validation
         function isValidEmail(email) {
@@ -295,6 +332,37 @@
                 return result !== null;
             } catch (error) {
                 return false;
+            }
+        }
+
+        // Check device cooldown (2 minutes between submissions)
+        async function isDeviceOnCooldown(deviceId) {
+            try {
+                const cooldownKey = `cooldown_${deviceId}`;
+                const result = await window.storage.get(cooldownKey);
+                
+                if (result && result.value) {
+                    const lastSubmission = parseInt(result.value);
+                    const timePassed = Date.now() - lastSubmission;
+                    
+                    if (timePassed < COOLDOWN_TIME) {
+                        const remainingSeconds = Math.ceil((COOLDOWN_TIME - timePassed) / 1000);
+                        return { onCooldown: true, remainingSeconds };
+                    }
+                }
+                return { onCooldown: false };
+            } catch (error) {
+                return { onCooldown: false };
+            }
+        }
+
+        // Set device cooldown
+        async function setDeviceCooldown(deviceId) {
+            try {
+                const cooldownKey = `cooldown_${deviceId}`;
+                await window.storage.set(cooldownKey, Date.now().toString());
+            } catch (error) {
+                console.error('Error setting cooldown:', error);
             }
         }
 
@@ -370,6 +438,16 @@
                 return;
             }
 
+            // Generate device fingerprint
+            const { deviceId, deviceInfo } = generateDeviceFingerprint();
+
+            // Check device cooldown
+            const cooldownCheck = await isDeviceOnCooldown(deviceId);
+            if (cooldownCheck.onCooldown) {
+                showMessage(`⏱️ Please wait ${cooldownCheck.remainingSeconds} seconds before submitting again from this device.`, 'warning');
+                return;
+            }
+
             // Check if already marked attendance today
             const alreadyMarked = await hasMarkedToday(email);
             if (alreadyMarked) {
@@ -404,7 +482,7 @@
                     showLocationStatus(`📍 Your location accuracy: ±${Math.round(accuracy)}m | Distance from office: ${Math.round(distance)}m`);
 
                     if (distance <= MAX_DISTANCE) {
-                        // Prepare data
+                        // Prepare data with device info
                         const now = new Date();
                         const data = {
                             name: name,
@@ -415,14 +493,19 @@
                             latitude: userLat,
                             longitude: userLng,
                             distance: Math.round(distance),
-                            accuracy: Math.round(accuracy)
+                            accuracy: Math.round(accuracy),
+                            deviceId: deviceId,
+                            userAgent: deviceInfo.userAgent,
+                            devicePlatform: deviceInfo.platform,
+                            screenResolution: deviceInfo.screenResolution
                         };
 
                         // Send to Google Sheets
                         await sendToGoogleSheets(data);
 
-                        // Mark as attended
+                        // Mark as attended and set cooldown
                         await markAttended(email);
+                        await setDeviceCooldown(deviceId);
 
                         showMessage(`✅ Attendance marked successfully! Welcome, ${name}!`, 'success');
                         
