@@ -176,11 +176,11 @@
 </head>
 <body>
     <div class="container">
-        <h1> DCIP Attendance</h1>
+        <h1>DCIP Attendance</h1>
         <p class="subtitle">Mark your attendance by submitting this form</p>
         
         <div class="info-box">
-            ℹ️ You can only mark attendance once per day.
+            ℹ️ You can only mark attendance once per day. Each device can only be used once per day.
         </div>
         
         <form id="attendanceForm">
@@ -216,7 +216,6 @@
         const TARGET_LAT = 11.5852869;
         const TARGET_LNG = 75.6439678;
         const MAX_DISTANCE = 100; // meters
-        const COOLDOWN_TIME = 2 * 60 * 1000; // 2 minutes in milliseconds
 
         const form = document.getElementById('attendanceForm');
         const submitBtn = document.getElementById('submitBtn');
@@ -324,57 +323,33 @@
         }
 
         // Check if email already marked attendance today
-        async function hasMarkedToday(email) {
-            try {
-                const todayKey = getTodayKey();
-                const storageKey = `attendance_${todayKey}_${email.toLowerCase()}`;
-                const result = await window.storage.get(storageKey);
-                return result !== null;
-            } catch (error) {
-                return false;
-            }
+        function hasMarkedToday(email) {
+            const todayKey = getTodayKey();
+            const storageKey = `attendance_${todayKey}_${email.toLowerCase()}`;
+            return localStorage.getItem(storageKey) !== null;
         }
 
-        // Check device cooldown (2 minutes between submissions)
-        async function isDeviceOnCooldown(deviceId) {
-            try {
-                const cooldownKey = `cooldown_${deviceId}`;
-                const result = await window.storage.get(cooldownKey);
-                
-                if (result && result.value) {
-                    const lastSubmission = parseInt(result.value);
-                    const timePassed = Date.now() - lastSubmission;
-                    
-                    if (timePassed < COOLDOWN_TIME) {
-                        const remainingSeconds = Math.ceil((COOLDOWN_TIME - timePassed) / 1000);
-                        return { onCooldown: true, remainingSeconds };
-                    }
-                }
-                return { onCooldown: false };
-            } catch (error) {
-                return { onCooldown: false };
-            }
-        }
-
-        // Set device cooldown
-        async function setDeviceCooldown(deviceId) {
-            try {
-                const cooldownKey = `cooldown_${deviceId}`;
-                await window.storage.set(cooldownKey, Date.now().toString());
-            } catch (error) {
-                console.error('Error setting cooldown:', error);
-            }
+        // Check if device already used today
+        function hasDeviceMarkedToday(deviceId) {
+            const todayKey = getTodayKey();
+            const deviceKey = `device_${todayKey}_${deviceId}`;
+            return localStorage.getItem(deviceKey) !== null;
         }
 
         // Mark email as attended today
-        async function markAttended(email) {
-            try {
-                const todayKey = getTodayKey();
-                const storageKey = `attendance_${todayKey}_${email.toLowerCase()}`;
-                await window.storage.set(storageKey, 'marked');
-            } catch (error) {
-                console.error('Error marking attendance:', error);
-            }
+        function markAttended(email) {
+            const todayKey = getTodayKey();
+            const storageKey = `attendance_${todayKey}_${email.toLowerCase()}`;
+            localStorage.setItem(storageKey, 'marked');
+            console.log('Email marked:', email);
+        }
+
+        // Mark device as used today
+        function markDeviceUsed(deviceId) {
+            const todayKey = getTodayKey();
+            const deviceKey = `device_${todayKey}_${deviceId}`;
+            localStorage.setItem(deviceKey, 'used');
+            console.log('Device marked as used:', deviceId);
         }
 
         // Send data to Google Sheets
@@ -440,16 +415,23 @@
 
             // Generate device fingerprint
             const { deviceId, deviceInfo } = generateDeviceFingerprint();
+            
+            console.log('Checking for email:', email);
+            console.log('Device ID:', deviceId);
 
-            // Check device cooldown
-            const cooldownCheck = await isDeviceOnCooldown(deviceId);
-            if (cooldownCheck.onCooldown) {
-                showMessage(`⏱️ Please wait ${cooldownCheck.remainingSeconds} seconds before submitting again from this device.`, 'warning');
+            // Check if device already used today (CHECK FIRST)
+            const deviceUsedToday = hasDeviceMarkedToday(deviceId);
+            console.log('Device used today?', deviceUsedToday);
+            
+            if (deviceUsedToday) {
+                showMessage('🚫 This device has already been used to mark attendance today!', 'error');
                 return;
             }
 
             // Check if already marked attendance today
-            const alreadyMarked = await hasMarkedToday(email);
+            const alreadyMarked = hasMarkedToday(email);
+            console.log('Email marked today?', alreadyMarked);
+            
             if (alreadyMarked) {
                 showMessage('⚠️ You have already marked attendance today!', 'warning');
                 return;
@@ -503,9 +485,9 @@
                         // Send to Google Sheets
                         await sendToGoogleSheets(data);
 
-                        // Mark as attended and set cooldown
-                        await markAttended(email);
-                        await setDeviceCooldown(deviceId);
+                        // Mark email as attended and device as used
+                        markAttended(email);
+                        markDeviceUsed(deviceId);
 
                         showMessage(`✅ Attendance marked successfully! Welcome, ${name}!`, 'success');
                         
